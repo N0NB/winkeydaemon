@@ -49,8 +49,8 @@
 # *    GNU General Public License for more details.
 # *
 # *    You should have received a copy of the GNU General Public License
-# *    along with this program; if not, write to the Free Software
-# *    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+# *    along with this program; if not, write to the Free Software Foundation,
+# *    Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA.
 
 ## Version 1.0, 13/12/2007
 
@@ -65,7 +65,6 @@ my $debug = 0;
 my $speed = 30;
 my $serial = "/dev/ttyS0";
 my $server_port = 6789;
-my $mutexdir = "$ENV{HOME}/.winkey";
 
 getopts("np:s:d:");
 
@@ -80,10 +79,10 @@ if ($opt_d) {
 	$serial = $opt_d;
 }
 
-if (-d "$ENV{HOME}/.winkey") {
+if (-d "/tmp/.winkey") {
 	# ok, no action required
 } else {
-	my $dir = "$ENV{HOME}/.winkey";
+	my $dir = "/tmp/.winkey";
 	`mkdir "$dir"`;
 	if ($debug) {print "Arranging mutex directory\n";}
 }
@@ -338,7 +337,7 @@ while (1) {
 						if ($debug){print "Brk-in\n";}
 					} elsif (($stat & 4) == 4) {
 						if ($debug){print "Keyer busy\n";}
-						`touch ~/.winkey/keyer_busy`;
+						`touch /tmp/.winkey/keyer_busy`;
 						$busy = 1;
 						$echo = "";
 					} elsif (($stat & 8) == 8) {
@@ -347,8 +346,8 @@ while (1) {
 						if ($debug){print "Waiting\n";}
 					} else {
 						if ($debug){print "Idle\n";}
-						if (-e "$ENV{HOME}/.winkey/keyer_busy") {
-							`rm ~/.winkey/keyer_busy`;
+						if (-e "/tmp/.winkey/keyer_busy") {
+							`rm /tmp/.winkey/keyer_busy`;
 						}
 						$busy = 0;
 						$echo = "";
