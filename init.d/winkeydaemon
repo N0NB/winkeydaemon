@@ -1,0 +1,128 @@
+#!/bin/sh 
+
+# winkeydaemon init script
+
+### BEGIN INIT INFO
+# Provides:          winkeydaemon
+# Required-Start:    $network $local_fs
+# Required-Stop:     
+# Should-Start:      $named
+# Should-Stop:       
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: daemon which will operate the winkey keyer
+# Description:       It listens to a udp port and converts cwdaemon commands
+#                    to the format winkey needs, and sends it to the serial
+#                    port the winkey unit is connected to.
+### END INIT INFO
+
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+DAEMON=/usr/sbin/winkeydaemon # Introduce the server's location here
+NAME=winkeydaemon             # Introduce the short server's name here
+DESC="daemon which will operate the winkey keyer" # Introduce a short description here
+LOGDIR=/var/log/winkeydaemon  # Log directory to use
+
+test -x $DAEMON || exit 0
+test -x $DAEMON_WRAPPER || exit 0
+
+. /lib/lsb/init-functions
+
+# Default options, these can be overriden by the information
+# at /etc/default/$NAME
+DAEMON_OPTS=""          # Additional options given to the server 
+
+DODTIME=20              # Time to wait for the server to die, in seconds
+                        # If this value is set too low you might not
+                        # let some servers to die gracefully and
+                        # 'restart' will not work
+                        
+LOGFILE=$LOGDIR/$NAME.log  # Server logfile
+#DAEMONUSER=winkeydaemon   # Users to run the daemons as. If this value
+                        # is set start-stop-daemon will chuid the server
+
+# Include defaults if available
+if [ -f /etc/default/$NAME ] ; then
+	. /etc/default/$NAME
+fi
+
+# Use this if you want the user to explicitly set 'RUN' in 
+# /etc/default/
+#if [ "x$RUN" != "xyes" ] ; then
+#    log_failure_msg "$NAME disabled, please adjust the configuration to your needs "
+#    log_failure_msg "and then set RUN to 'yes' in /etc/default/$NAME to enable it."
+#    exit 1
+#fi
+
+# Check that the user exists (if we set a user)
+# Does the user exist?
+if [ -n "$DAEMONUSER" ] ; then
+    if getent passwd | grep -q "^$DAEMONUSER:"; then
+        # Obtain the uid and gid
+        DAEMONUID=`getent passwd |grep "^$DAEMONUSER:" | awk -F : '{print $3}'`
+        DAEMONGID=`getent passwd |grep "^$DAEMONUSER:" | awk -F : '{print $4}'`
+    else
+        log_failure_msg "The user $DAEMONUSER, required to run $NAME does not exist."
+        exit 1
+    fi
+fi
+
+
+set -e
+
+running() {
+    return 0
+}
+
+start_server() {
+# Start the process using the wrapper
+        if [ -z "$DAEMONUSER" ] ; then
+            start-stop-daemon --start --quiet \
+                        --exec $DAEMON -- $DAEMON_OPTS
+            errcode=$?
+        else
+# if we are using a daemonuser then change the user id
+            start-stop-daemon --start --quiet \
+                        --chuid $DAEMONUSER \
+                        --exec $DAEMON -- $DAEMON_OPTS
+            errcode=$?
+        fi
+	return $errcode
+}
+
+stop_server() {
+	exec killall winkeydaemon
+}
+
+case "$1" in
+  start)
+	log_daemon_msg "Starting $DESC " "$NAME"
+        start_server
+        log_end_msg 0
+	;;
+  stop)
+        log_daemon_msg "Stopping $DESC" "$NAME"
+        stop_server
+        log_end_msg $?
+        ;;
+  restart|force-reload)
+        log_daemon_msg "Restarting $DESC" "$NAME"
+        stop_server
+        # Wait some sensible amount, some server need this
+        [ -n "$DIETIME" ] && sleep $DIETIME
+        start_server
+        log_end_msg $?
+	;;
+  # Use this if the daemon cannot reload
+  reload)
+        log_warning_msg "Reloading $NAME daemon: not implemented, as the daemon"
+        log_warning_msg "cannot re-read the config file (use restart)."
+        ;;
+  *)
+	N=/etc/init.d/$NAME
+	echo "Usage: $N {start|stop|restart|force-reload}" >&2
+	exit 1
+	;;
+esac
+
+exit 0
