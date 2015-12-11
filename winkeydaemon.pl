@@ -5,7 +5,7 @@
 #
 # SYNOPSIS
 # winkeydaemon [options] ...
-# 
+#
 # OPTIONS
 # -n  Run in debug mode
 # -p  UDP port (default is 6789)
@@ -19,7 +19,7 @@
 # winkeydaemon.pl is a driver for the winkey2 keyer. It provides an interface
 # which is compatible to the cwdaemon, which means it can be used instead of
 # the cwdaemon.
-# The winkeydaemon listens to a udp socket # and outputs commands to the k1e
+# The winkeydaemon listens to a udp socket # and outputs commands to the k1el
 # keyer on a serial port.
 #
 
@@ -37,8 +37,9 @@
 # COPYING
 #
 # This program is published under the GPL license.
-#   Copyright (C) 2007, 2008
-#       Rein Couperus PA0R (rein at couperus.com)
+#   Copyright (C) 2007, 2008 Rein Couperus PA0R (rein at couperus.com)
+#   Copyright (C) 2013 Wilbert Knol PE7T (knol00 at gmail.com)
+#   Copyright (C) 2015 Nate Bargmann, N0NB <n0nb@arrl.net>
 #
 # *    winkeydaemon.pl is free software; you can redistribute it and/or modify
 # *    it under the terms of the GNU General Public License as published by
@@ -54,7 +55,7 @@
 # *    along with this program; if not, write to the Free Software Foundation,
 # *    Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA.
 
-my $version = "version: 1.0.PE7T-2   9 Mar 2013";
+my $version = "version: 1.0.3   10 Dec 2015";
 ##
 ##    This is PA0R version 1.0 with modifications (below) by PE7T
 ##
@@ -111,6 +112,10 @@ if ($opt_V) {
     $opt_V = undef;
     print "\n$0 $version\n\n";
     exit(0);
+}
+
+if ($opt_n) {
+    $debug = 1;
 }
 
 if ($opt_p) {
@@ -306,7 +311,7 @@ sub Do_operations {
 		    $count = $port->write($senddelay);
 
 		} elsif ($chars[1] eq "c") {  ## TUNE
-		    if ($tune_on) { 
+		    if ($tune_on) {
 			$tune_on = 0;
 			if ($debug) { print "Tune off\n";}
 		    } else {
