@@ -1,12 +1,13 @@
 winkeydaemon - Morse daemon for the winkey hardware keyer module
 
-winkeydaemon is a driver for the winkey2 keyer. It provides an interface
-which is compatible to the cwdaemon, which means it can be used instead of
-the cwdaemon.
+winkeydaemon is a driver for the winkey2 and winkey3 keyers, it will also work
+with the K1EL compatible Ham Gadgets Master Keyer 1 (MK1). It provides an
+interface which is compatible to the cwdaemon, which means it can be used
+instead of the cwdaemon for programs such as Tlf.
 
 The winkeydaemon listens to a udp socket and outputs commands to the k1el
 keyer on a serial port.
 
-This archive is an effort by Nate Bargmann to colate the changes made by
-Rein, Joop, and Wilbert over the years and make them public.  Fixes and
-updates will be welcome.
+This archive is an effort by Nate Bargmann to colate the changes made by Rein,
+Joop, and Wilbert over the years and make them public.  Fixes and updates will
+be welcome.

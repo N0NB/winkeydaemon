@@ -1,5 +1,5 @@
 .\"                                      Hey, EMACS: -*- nroff -*-
-.TH WINKEYDAEMON "1" "2017-03-12" "Winkeydaemon" "K1EL keyer driver"
+.TH WINKEYDAEMON "1" "2018-01-28" "Winkeydaemon" "K1EL keyer driver"
 .
 .SH NAME
 winkeydaemon \- Morse Code daemon for the Winkey hardware keyer module
@@ -29,9 +29,19 @@ socket and outputs commands to the K1EL keyer on a serial port.
 .B winkeydaemon
 accepts the following options:
 .TP
+.B \-e
+turn on winkeyer's 'paddle echo' and to make the daemon transmit echos as UDP
+datagrams.
+.IP
+Use the 'netcat' utility on the target machine to display echoes, e.g. 'nc -u
+-l -p 6790'. The target machine is set by <Hostname:Port> (default: localhost:6790).
+.TP
 .BI \-d\  device
 Serial device to be used (default is
 .IR /dev/ttyUSB0 ).
+.TP
+.B \-m
+Turns off ('mutes') sidetone in host mode on version 2 and 3 keyers.
 .TP
 .B \-n
 Enable debug mode.
@@ -119,9 +129,6 @@ as long as the account is a member of the group of the serial device
 (often dialout but can vary).
 .
 .SH BUGS
-Does not background itself.  It must be placed in the background
-manually, usually with the \(aq&\(aq at the end of the command line.
-.P
 A lack of testing on a wider range of keyers.
 .P
 Bug reports and patches can be reported through the
@@ -132,10 +139,10 @@ GitHub Web site
 .SH EXAMPLE
 Start
 .B winkeydaemon
-using a custom serial device name and backgrounding:
+using a custom serial device name:
 .P
 .EX
-k1el_daemon.pl -d /dev/mk1 &
+winkeydaemon -d /dev/mk1
 .EE
 .
 .SH AUTHORS

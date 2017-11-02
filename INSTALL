@@ -1,20 +1,17 @@
-Installation is rather simple, copy the winkeydaemon script to a
-convenient directory.  If the directory is in your path, then it can
-be run as 'winkeydaemon [options] &' (the '&' character will cause
-the script to run in the background, allowing to run another program,
-e.g. Tlf, in the same shell instance), otherwise the full path must
-be provided.
+Installation is rather simple, copy the winkeydaemon script to a convenient
+directory.  If the directory is in your path, then it can be run as
+'winkeydaemon [options]', otherwise the full path must be provided.
 
-Operation from a normal user account is possible so long as the account
-is a member of the group of the serial device.  Often this is the
-'dialout' group but may vary among distributions.
+Operation from a normal user account is possible so long as the account is a
+member of the group of the serial device.  Often this is the 'dialout' group
+but may vary among distributions.
 
-An init script is provided for those wishing to start winkeydaemon
-as a system service.
+An init script is provided for those wishing to start winkeydaemon as a system
+service.
 
 The Perl module Device::SerialPort is required.  For Debian and derivatives
-this can be found as the libdevice-serialport-perl package.  For Slackware
-and derivatives this can be found on Slackbuilds dot org
-⟨http://slackbuilds.org⟩ as the perl-Device-SerialPort build script.  Other
-distributions will vary.  It is always available from  meta::cpan
+this can be found as the libdevice-serialport-perl package.  For Slackware and
+derivatives this can be found on Slackbuilds dot org ⟨http://slackbuilds.org⟩
+as the perl-Device-SerialPort build script.  Other distributions will vary.
+It is always available from meta::cpan
 ⟨https://metacpan.org/release/Device-SerialPort⟩.
