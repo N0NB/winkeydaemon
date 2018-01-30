@@ -7,9 +7,9 @@
 #
 # OPTIONS
 # -d  Serial device (default is /dev/ttyUSB0)
-# -e  turn on winkeyer's 'paddle echo' and to make the daemon transmit echos
-#     as UDP datagrams.
-# -m  Turns off ('mutes') sidetone in host mode on version 2 and 3 keyers.
+# -e  Transmitted CW is echoed back on the client's UDP port (see: '-p')
+# -m  Turns off ('mutes') sidetone in host mode on version 2 and 3 keyers
+#     On USB Lite Wk2 keyers with no speaker, this may disable the LED.
 # -n  Run in debug mode
 # -p  UDP port (default is 6789)
 # -q  QRV string, transmitted on start-up
@@ -42,7 +42,7 @@
 #
 # This program is published under the GPL license.
 #   Copyright (C) 2007, 2008 Rein Couperus PA0R (rein at couperus.com)
-#   Copyright (C) 2013 Wilbert Knol PE7T (knol00 at gmail.com)
+#   Copyright (C) 2013, 2017 Wilbert Knol PE7T (knol00 at gmail.com)
 #   Copyright (C) 2015 Nate Bargmann, N0NB <n0nb@arrl.net>
 #
 # *    winkeydaemon.pl is free software; you can redistribute it and/or modify
@@ -59,8 +59,9 @@
 # *    along with this program; if not, write to the Free Software Foundation,
 # *    Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA.
 
-my $version = "version: 1.0.5   2 Nov 2017";
+my $version = "1.0.6   30 Jan 2018";
 $main::VERSION = $version;
+$Getopt::Std::STANDARD_HELP_VERSION = '1';
 ##
 ##    This is PA0R version 1.0 with modifications (below) by PE7T
 ##
@@ -99,10 +100,9 @@ $main::VERSION = $version;
 ##
 ## 11 Added '-m' option to mute sidetone on version 2 and 3 keyers.
 ##
-## 12 New '-e' option to turn on winkeyer's 'paddle echo' and to make
-##    the daemon transmit echos as UDP datagrams. Use 'netcat' utility
-##    on  the target  machine  to display  echos, e.g:  'nc  -u -l  -p
-##    6790'. Target is set by $echoDest<Hostname|Port>.
+## 12 The '-e' option turns on  winkeyer's 'echo' and makes the daemon
+##    echo  transmitted CW  as UDP  datagrams on  the existing  client
+##    socket as per option '-p'.
 ##
 
 use Device::SerialPort qw( :PARAM :STAT 0.07 );
@@ -110,24 +110,20 @@ use IO::Socket;
 use Getopt::Std;
 use Socket;
 
-my $myserver         = undef;
-my $server           = undef;
-my $cnt              = 0;
-my $string           = "";
-my $debug            = 0;
-my $speed            = 32;
-my $minSpeed         = 20;
-my $maxSpeed         = 40;
-my $serial           = "/dev/ttyUSB0";
-my $server_port      = 6789;
-my $echoDestPort     = 6790;
-my $echoDestHostname = '127.0.0.1';
+my $cnt                = 0;
+my $string             = "";
+my $debug              = 0;
+my $speed              = 32;
+my $minSpeed           = 20;
+my $maxSpeed           = 40;
+my $serial             = "/dev/ttyUSB0";
+my $server_port        = 6789;
 
 getopts("emVnp:s:d:q:");
 
 if ($opt_V) {
     $opt_V = undef;
-    print "\n$0 $version\n\n";
+    print "\n$0 version $version\n\n";
     exit(0);
 }
 
@@ -193,10 +189,11 @@ my $timeout = 0;
 $port->read_char_time(0);
 $port->read_const_time(1);
 
-########## Initialize the udp port
+########## Initialize the udp port:
 
+my $peerName = undef;
 $server = IO::Socket::INET->new(LocalPort => $server_port, Proto => "udp")
-    or die "Couldn't setup udp server on port $server_port : $@\n";
+  or die "Couldn't setup udp server on port $server_port : $@\n";
 
 ########### Initialize keyer
 
@@ -275,8 +272,13 @@ sub Do_operations {
 	    eval {
 		local $SIG{ALRM} = sub { die "alarm time out" };
 		alarm 1;
-		$myserver = $server->recv($datagram, 32);
+		my $s = $server->recv($datagram, 32);
 		alarm 0;
+		$peerName = $s if defined $s;
+		if ( $debug ) {
+		  ($peerPort, $peerAddr) = unpack_sockaddr_in($peerName);
+		  print "echo client:", inet_ntoa($peerAddr), ":$peerPort\n";
+		}
 		1;  # return value from eval on normalcy
 	    };
 	    $cnt = 0;
@@ -377,7 +379,8 @@ sub Do_operations {
 		    } elsif ($cr == 42) {
 			$string .= "<";
 			$c = "";
-		    } elsif ($cr == 43) {
+
+		      } elsif ($cr == 43) {
 			if ($speed < 90) {
 			    $speed += 4;
 			    $setspeed = sprintf ("%c%c", 0x1C, $speed);
@@ -453,25 +456,19 @@ sub Do_operations {
 		my $z = ord($saw);
 		if ( defined $opt_e && $z > 31 && $z < 112 ) {
 		  # Printable echo chars only..
-		  if (! defined $echoSocket) {
-		    # ..on UDP socket:
-		    $echoSocket = IO::Socket::INET->new
-		      (
-		       PeerPort  => $echoDestPort,
-		       PeerAddr  => $echoDestHostname,
-		       LocalAddr => 'localhost',
-		       LocalPort => 6791,
-		       Broadcast => 0,
-		       Proto => 'udp',
-		      )
-		      or die "Could not construct UDP echo socket: $@\n";
-		    print $echoSocket "winkeydaemon echo QRV on new socket...\n";
+		  # ..on UDP socket:
+		  if ( defined $peerName ) {
+		    eval {
+		      local $SIG{ALRM} = sub { die "alarm time out" };
+		      alarm 1;
+		      send($server, $saw, 0, $peerName);
+		      alarm 0;
+		      1;  # return value from eval on normalcy
+		    };
 		  }
-		  $echoSocket->send($saw) or undef $echoSocket;
 		}
 
 		if ($busy && $string) {
-
 		    $echo .= $saw;
 		    if (length($echo) > 9) {
 			if (length($echo) <= length($string)) {
