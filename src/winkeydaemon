@@ -7,6 +7,7 @@
 #
 # OPTIONS
 # -d  Serial device (default is /dev/ttyUSB0)
+# -b  Serial baud rate (default is 1200)
 # -e  Transmitted CW is echoed back on the client's UDP port (see: '-p')
 # -m  Turns off ('mutes') sidetone in host mode on version 2 and 3 keyers
 #     On USB Lite Wk2 keyers with no speaker, this may disable the LED.
@@ -18,7 +19,7 @@
 #
 # DESCRIPTION
 #
-# winkeydaemon.pl is a driver for the winkey2/3 keyers and compatible keyers
+# winkeydaemon is a driver for the winkey2/3 keyers and compatible keyers
 # such as the Hamgadgets Master Keyer 1. It provides an interface which is
 # compatible to the cwdaemon, which means it can be used instead of the
 # cwdaemon.
@@ -27,7 +28,7 @@
 # keyer on a serial port.
 #
 
-# The k1el_daemon implements the following cwdaemon-compatible commands:
+# The winkeydaemon implements the following cwdaemon-compatible commands:
 # <ESC>"0"                 Reset to default values
 # <ESC>"2"<"speed value">  Set keying speed (5 ... 60 wpm)
 # <ESC>"4"                 Abort message
@@ -36,7 +37,7 @@
 # <ESC>"c"<"x">            Tune x seconds long (limit = 10 seconds)
 # <ESC>"d"<"delay">        PTT on delay 0..50 (0 .. 50ms)
 # Any message              Send morse code message  (max 1 packet!)
-# qrz de pa0rct ++test--   In- and decrease speed on the fly in 4 wpm steps
+# qrz de pa0rct ++test--   In- and decrease speed on the fly in 2 wpm steps
 #
 # COPYING
 #
@@ -45,12 +46,12 @@
 #   Copyright (C) 2013, 2017 Wilbert Knol PE7T (knol00 at gmail.com)
 #   Copyright (C) 2015 Nate Bargmann, N0NB <n0nb@arrl.net>
 #
-# *    winkeydaemon.pl is free software; you can redistribute it and/or modify
+# *    winkeydaemon is free software; you can redistribute it and/or modify
 # *    it under the terms of the GNU General Public License as published by
 # *    the Free Software Foundation; either version 2 of the License, or
 # *    (at your option) any later version.
 # *
-# *    winkeydaemon.pl is distributed in the hope that it will be useful,
+# *    winkeydaemon is distributed in the hope that it will be useful,
 # *    but WITHOUT ANY WARRANTY; without even the implied warranty of
 # *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # *    GNU General Public License for more details.
@@ -59,7 +60,9 @@
 # *    along with this program; if not, write to the Free Software Foundation,
 # *    Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA.
 
-my $version = "1.0.6   30 Jan 2018";
+use strict;
+
+my $version = "1.0.7   02 Feb 2018";
 $main::VERSION = $version;
 $Getopt::Std::STANDARD_HELP_VERSION = '1';
 ##
@@ -104,22 +107,39 @@ $Getopt::Std::STANDARD_HELP_VERSION = '1';
 ##    echo  transmitted CW  as UDP  datagrams on  the existing  client
 ##    socket as per option '-p'.
 ##
+##    From Zoli, ha5cqz:
+## 13 Switched to select-based timeout for UDP receive. This allows
+##    fine granular control and the timeout is set to 50 ms, which
+##    gives a maximum keyer data rate ~20 cps.
+##    In/decrease speed in 2 wpm steps, conforming to cwdaemon.
+##    Added baud rate setting. Could be needed for non original keyers.
+##    Added use strict and using Data::Dumper to display datagram in
+##    debug mode.
+##    Selecting printable chars was changed to regexp. It is easier to
+##    read than raw ASCII codes.
+##    Added pot value reporting in debug mode. All status bits are
+##    evaluated and reported.
+##
 
 use Device::SerialPort qw( :PARAM :STAT 0.07 );
 use IO::Socket;
+use IO::Select;
 use Getopt::Std;
-use Socket;
+use Data::Dumper; $Data::Dumper::Useqq = 1;
 
-my $cnt                = 0;
-my $string             = "";
 my $debug              = 0;
 my $speed              = 32;
 my $minSpeed           = 20;
 my $maxSpeed           = 40;
 my $serial             = "/dev/ttyUSB0";
+my $baud               = 1200;
 my $server_port        = 6789;
+my $qrvMsge            = '';
 
-getopts("emVnp:s:d:q:");
+our ($opt_V, $opt_n, $opt_p, $opt_s, $opt_d, $opt_q, $opt_b);
+our ($opt_e, $opt_m);
+
+getopts("emVnp:s:d:s:q:");
 
 if ($opt_V) {
     $opt_V = undef;
@@ -135,6 +155,10 @@ if ($opt_p) {
 	$server_port = $opt_p;
 }
 
+if ($opt_b) {
+	$baud = $opt_b;
+}
+
 if ($opt_s) {
 	$speed = $opt_s;
 }
@@ -148,10 +172,9 @@ if ($opt_q) {
 }
 
 my $pinCfg = 0x0F;
-if (our $opt_m) {
+if ($opt_m) {
   # Side tone to be muted:
   $pinCfg = 0x0D;
-  $opt_m = undef;
 }
 
 if (-d "/tmp/.winkey") {
@@ -165,8 +188,8 @@ if (-d "/tmp/.winkey") {
 ########## Initialize the serial port
 
 
-my @sttyCmd=qw(1200 raw clocal cread -crtscts cs8 cstopb -parenb -echo -echoe -echoctl -echok -echonl -echoprt -isig -iexten);
-unshift @sttyCmd, ("stty", "-F", $serial);
+my @sttyCmd=qw(raw clocal cread -crtscts cs8 cstopb -parenb -echo -echoe -echoctl -echok -echonl -echoprt -isig -iexten);
+unshift @sttyCmd, ("stty", "-F", $serial, $baud);
 print "Running @sttyCmd \n" if $debug;
 system(@sttyCmd) == 0 or die;
 
@@ -192,13 +215,13 @@ $port->read_const_time(1);
 ########## Initialize the udp port:
 
 my $peerName = undef;
-$server = IO::Socket::INET->new(LocalPort => $server_port, Proto => "udp")
+my $server = IO::Socket::INET->new(LocalPort => $server_port, Proto => "udp")
   or die "Couldn't setup udp server on port $server_port : $@\n";
 
 ########### Initialize keyer
 
-$openKeyer = sprintf("%c%c", 0x00, 0x02);	## open keyer interface
-$count = $port->write($openKeyer);
+my $openKeyer = sprintf("%c%c", 0x00, 0x02);	## open keyer interface
+my $count = $port->write($openKeyer);
 
 select undef,undef,undef, 0.3;
 
@@ -209,7 +232,7 @@ if (defined $opt_e) {
   $winKeyerMode = 0xC4; # Paddle echo
 }
 
-$setmode = sprintf ("%c%c", 0x0E, $winKeyerMode);
+my $setmode = sprintf ("%c%c", 0x0E, $winKeyerMode);
 $count = $port->write($setmode);
 
 select undef,undef,undef, 0.3;
@@ -224,22 +247,20 @@ $count = $port->write($setpins);
 
 select undef,undef,undef, 0.2;
 
-$senddelay = sprintf ("%c%c%c", 0x04, 0x01, 0x00); ## set PTT lead. tail [ms]
+my $senddelay = sprintf ("%c%c%c", 0x04, 0x01, 0x00); ## set PTT lead. tail [ms]
 $count = $port->write($senddelay);
 
 select undef,undef,undef, 0.2;
 
 ## set min  WPM and speed range:
 my $r = $maxSpeed - $minSpeed;
-$setRange = sprintf ("%c%c%c%c", 0x05, $minSpeed, $r, 0);
+my $setRange = sprintf ("%c%c%c%c", 0x05, $minSpeed, $r, 0);
 $count = $port->write($setRange);
 
-$setspeed = sprintf ("%c%c", 0x02, $speed);  ## set the default speed
+my $setspeed = sprintf ("%c%c", 0x02, $speed);  ## set the default speed
 $count = $port->write($setspeed);
 
-if ($opt_n) {
-	$opt_n = 0;
-	$debug = 1;
+if ($debug) {
 	Do_operations();	## do not fork, debug
 } else {
 	if (fork) {			## run as daemon
@@ -262,30 +283,33 @@ sub Do_operations {
 ####################################
 
     my $busy = 0;
-    my $echo = "";
+    my $xoff = 0;
+    my @fifo = ();
+    my $tune_on = 0;
+    my $datagram;
+    my $saw;
 
-   $count = $port->write($qrvMsge) if defined $qrvMsge;
+    $count = $port->write($qrvMsge) if defined $qrvMsge;
+
+    my $select = new IO::Select();
+    $select->add($server);
 
     while (1) {
 
-	if ($cnt > 31) {
-	    eval {
-		local $SIG{ALRM} = sub { die "alarm time out" };
-		alarm 1;
-		my $s = $server->recv($datagram, 32);
-		alarm 0;
-		$peerName = $s if defined $s;
-		if ( $debug ) {
-		  ($peerPort, $peerAddr) = unpack_sockaddr_in($peerName);
-		  print "echo client:", inet_ntoa($peerAddr), ":$peerPort\n";
-		}
-		1;  # return value from eval on normalcy
-	    };
-	    $cnt = 0;
-	} else {
-	    $cnt++;
-	}
-	if ($datagram) {
+        #
+        # look for a UDP packet
+        #
+        my @ready = $select->can_read(0.05);  # 50 ms timeout
+        if (@ready) {
+            my $s = $server->recv($datagram, 100);
+            print "Got ",Data::Dumper->Dump([$datagram],['datagram']) if $debug;
+
+            $peerName = $s if defined $s;
+            if ( $debug ) {
+              my ($peerPort, $peerAddr) = unpack_sockaddr_in($peerName);
+              print "echo client:", inet_ntoa($peerAddr), ":$peerPort\n";
+            }
+
 	    my @chars = split '', $datagram;
 	    if (ord($chars[0]) == 27) {
 
@@ -302,6 +326,7 @@ sub Do_operations {
 		} elsif ($chars[1] eq "5") {  ## exit daemon
 		    last;
 		} elsif ($chars[1] eq "7") {  ## set weight
+                    my $wgt;
 		    if ($chars[2] eq "-") {
 			$wgt = $chars[2] . $chars[3] ;
 			if ( defined $chars[4] ) {
@@ -323,6 +348,7 @@ sub Do_operations {
 		    my $setweight = sprintf ("%c%c", 0x03, $wgt);
 		    $count = $port->write($setweight);
 		} elsif ($chars[1] eq "d") {  ## set PTT lead in (00...50)
+                    my ($delay, $delaybyte);
 		    if (ord($chars[3]) == 0) {
 			$delay = 0;
 			$delaybyte = 0x02;
@@ -350,47 +376,34 @@ sub Do_operations {
 		    $count = $port->write($tuning);
 
 		} else {
-		    $stopkeying = sprintf("%c", 0x0A);
+		    my $stopkeying = sprintf("%c", 0x0A);
 		    $count = $port->write($stopkeying);
+                    @fifo = ();
 		}
-		$datagram = "";
 
 	    } else {
-		foreach $c (@chars) {
-		    $cr = ord($c);
-		    if (($cr > 47 && $cr < 58) || ($cr > 64 && $cr < 91) || $cr == 32) { # only 0-9A-Z
-			$string .= $c;
-			$c = "";
-		    } elsif ($cr == 39 || $cr == 41 || $cr == 47
-			     || $cr == 58 || $cr == 60
-			     || $cr == 61 || $cr == 62
-			     || $cr == 64 || $cr == 63) {
-			$string .= $c;
-			$c = "";
-		    } elsif ($cr == 38) {	## '&'
-			my $chrs = sprintf ("%c%s%s", 0x1B, "A", "S");
-			$string .= $chrs;
-		    } elsif ($cr == 33) {	## '!'
-			my $chrs = sprintf ("%c%s%s", 0x1B, "S", "N");
-			$string .= $chrs;
-		    } elsif ($cr == 40) {
-			$string .= ")";
-			$c = "";
-		    } elsif ($cr == 42) {
-			$string .= "<";
-			$c = "";
-
-		      } elsif ($cr == 43) {
+		foreach my $c (@chars) {
+		    my $cr = ord($c);
+                    # easy chars: 0-9 A-Z space ' ) / : < = > ? @ | backspace
+                    if ($c =~ /^[0-9A-Z ')\/:<=>?@|\b]$/) {
+			push @fifo, $c;
+		    } elsif ($c eq '&') {
+			push @fifo, sprintf ("%c%s%s", 0x1B, "A", "S");
+		    } elsif ($c eq '!') {
+			push @fifo, sprintf ("%c%s%s", 0x1B, "S", "N");
+		    } elsif ($c eq '(') {
+			push @fifo, ")";
+		    } elsif ($c eq '*') {
+			push @fifo, "<";
+		    } elsif ($c eq '+') {
 			if ($speed < 90) {
-			    $speed += 4;
-			    $setspeed = sprintf ("%c%c", 0x1C, $speed);
-			    $string .= $setspeed;
+			    $speed += 2;
+                            push @fifo, sprintf ("%c%c", 0x1C, $speed);
 			}
-		    } elsif ($cr == 45) {
+		    } elsif ($c eq '-') {
 			if ($speed > 8) {
-			    $speed -= 4;
-			    $setspeed = sprintf ("%c%c", 0x1C, $speed);
-			    $string .= $setspeed;
+			    $speed -= 2;
+                            push @fifo, sprintf ("%c%c", 0x1C, $speed);
 			}
 		    } elsif ($cr == 0) {
 			last;
@@ -399,102 +412,76 @@ sub Do_operations {
 
 		}
 
-		if ($busy == 0) {
-		    if (length ($string) > 30) {
-			$outstring = substr($string, 0, 30);
-			$string = substr($string, 30);
-			$count = $port->write($outstring);
-		    } elsif (length ($string) == 1) {
-			$outstring = $string;
-			$count = $port->write($outstring);
-			$string = "";
-		    } else {
-			$outstring = $string;
-			$string = "";
-			$count = $port->write($outstring);
-		    }
-		} else {
-		    $outstring = $string;
-		    $string = "";
-		    $count = $port->write($outstring);
-		}
+		if ($debug) {print "Fifo: ",@fifo,"\n";}
 
-		if ($debug > 1) {print "WRITE:", $outstring, "\n";}
+	    }
+	}
 
-		$datagram = "";
-	      }
-	  }
+        #
+        # send chars if buffer is not full
+        #
+	if (!$xoff && @fifo) {
+            $count = $port->write(shift @fifo);
+            if ($debug) {print "Wrote $count bytes, Fifo: ",@fifo,"\n";}
+        }
 
-	($count,$saw)=$port->read(1); # will read 1 char
-	if ($count) {
-	    $stat = ord($saw);
-	    if ($stat > 191) {
-		if ($debug > 1) {print "\n", $stat, "\n";}
-		if (($stat & 1) == 1) {
-		    if ($debug){print "Buffer 2/3 full\n";}
-		} elsif (($stat & 2) == 2) {
-		    if ($debug){print "Brk-in\n";}
-		} elsif (($stat & 4) == 4) {
-		    if ($debug){print "Keyer busy\n";}
-		    `touch /tmp/.winkey/keyer_busy`;
-		    $busy = 1;
-		    $echo = "";
-		} elsif (($stat & 8) == 8) {
-		    if ($debug){print "Tuning\n";}
-		} elsif (($stat & 16) == 16) {
-		    if ($debug){print "Waiting\n";}
-		} else {
-		    if ($debug){print "Idle\n";}
-		    if (-e "/tmp/.winkey/keyer_busy") {
-			`rm /tmp/.winkey/keyer_busy`;
-		    }
-		    $busy = 0;
-		    $echo = "";
-		}
-	    } else {
-		if ($debug) {print $saw, "\n";}
-		my $z = ord($saw);
-		if ( defined $opt_e && $z > 31 && $z < 112 ) {
-		  # Printable echo chars only..
-		  # ..on UDP socket:
-		  if ( defined $peerName ) {
-		    eval {
-		      local $SIG{ALRM} = sub { die "alarm time out" };
-		      alarm 1;
-		      send($server, $saw, 0, $peerName);
-		      alarm 0;
-		      1;  # return value from eval on normalcy
-		    };
-		  }
-		}
+        #
+        # get status and echo from the keyer
+        #
+        ($count,$saw) = $port->read(1); # will read 1 char
+        next unless $count;
 
-		if ($busy && $string) {
-		    $echo .= $saw;
-		    if (length($echo) > 9) {
-			if (length($echo) <= length($string)) {
-			    my $out = substr ($string, 0, length($echo));
-			    $string = substr ($string, length ($echo));
-			    $echo = "";
-			    $count = $port->write($out);
-			    $out = "";
-			} else {
-			    my $out = $string;
-			    $echo = "";
-			    $count = $port->write($out);
-			    $string = "";
-			}
-		    } else {
-			my $out = $string;
-			$echo = "";
-			$count = $port->write($out);
-			$string = "";
-		    }
-		  }
-	      }
-	  }
-      }
+        my $stat = ord($saw);
+        if (($stat & 0xc0) == 0xc0) {
+            if ($debug) {printf "\nStat: 0x%02x\n", $stat;}
+            $xoff = 0;
+            if ($stat == 0xc0) {
+                if ($debug){print "\tIdle\n";}
+                if (-e "/tmp/.winkey/keyer_busy") {
+                    `rm /tmp/.winkey/keyer_busy`;
+                }
+                $busy = 0;
+            } else {
+                if ($stat & 1) {
+                    if ($debug){print "\tBuffer 2/3 full\n";}
+                    $xoff = 1;
+                }
+                if ($stat & 2) {
+                    if ($debug){print "\tBrk-in\n";}
+                }
+                if ($stat & 4) {
+                    if ($debug){print "\tKeyer busy\n";}
+                    `touch /tmp/.winkey/keyer_busy`;
+                    $busy = 1;
+                }
+                if ($stat & 8) {
+                    if ($debug){print "\tTuning\n";}
+                }
+                if ($stat & 16) {
+                    if ($debug){print "\tWaiting\n";}
+                }
+            }
+        } elsif (($stat & 0xc0) == 0x80) {
+            if ($debug) {print "Pot: ", $stat & 0x7f, "\n";}
+        } else {
+            if ($debug) {print $saw, "\n";}
+            if ( defined $opt_e && $saw >= ' ' && $saw <= '~' ) {
+              # Printable echo chars only..
+              # ..on UDP socket:
+              if ( defined $peerName ) {
+                eval {
+                  local $SIG{ALRM} = sub { die "alarm time out" };
+                  alarm 1;
+                  send($server, $saw, 0, $peerName);
+                  alarm 0;
+                  1;  # return value from eval on normalcy
+                };
+              }
+            }
+        }
+    }
 
-    $keyerclose = sprintf ("%c%c", 0x00, 3);
+    my $keyerclose = sprintf ("%c%c", 0x00, 3);
     $count = $port->write($keyerclose);
     undef $port;
     exit;
