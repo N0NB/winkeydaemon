@@ -62,7 +62,7 @@
 
 use strict;
 
-my $version = "1.0.7   02 Feb 2018";
+my $version = "1.0.8   05 Feb 2018";
 $main::VERSION = $version;
 $Getopt::Std::STANDARD_HELP_VERSION = '1';
 ##
@@ -104,8 +104,8 @@ $Getopt::Std::STANDARD_HELP_VERSION = '1';
 ## 11 Added '-m' option to mute sidetone on version 2 and 3 keyers.
 ##
 ## 12 The '-e' option turns on  winkeyer's 'echo' and makes the daemon
-##    echo  transmitted CW  as UDP  datagrams on  the existing  client
-##    socket as per option '-p'.
+##    echo  transmitted CW  as  UDP  datagrams  on  all client sockets
+##    as per option '-p'.
 ##
 ##    From Zoli, ha5cqz:
 ## 13 Switched to select-based timeout for UDP receive. This allows
@@ -294,6 +294,7 @@ sub Do_operations {
     my $select = new IO::Select();
     $select->add($server);
 
+    my %peerNames; # active clients, past and present
     while (1) {
 
         #
@@ -304,10 +305,18 @@ sub Do_operations {
             my $s = $server->recv($datagram, 100);
             print "Got ",Data::Dumper->Dump([$datagram],['datagram']) if $debug;
 
-            $peerName = $s if defined $s;
-            if ( $debug ) {
+	    my $newPeer = 0;
+	    if ( defined $s ) {
+	      $peerName = $s; # update latest active client
+	      unless ( exists $peerNames{$s} ) {
+		$peerNames{$s} = '1'; # add new client to hash.
+		$newPeer = 1;
+	      }
+	    }
+
+            if ( $debug and $newPeer) {
               my ($peerPort, $peerAddr) = unpack_sockaddr_in($peerName);
-              print "echo client:", inet_ntoa($peerAddr), ":$peerPort\n";
+              print "New client:", inet_ntoa($peerAddr), ":$peerPort\n";
             }
 
 	    my @chars = split '', $datagram;
@@ -384,8 +393,8 @@ sub Do_operations {
 	    } else {
 		foreach my $c (@chars) {
 		    my $cr = ord($c);
-                    # easy chars: 0-9 A-Z space ' ) / : < = > ? @ | backspace
-                    if ($c =~ /^[0-9A-Z ')\/:<=>?@|\b]$/) {
+                    # easy chars: 0-9 A-Z space ' ) / : < = > ? @ | backspace , .
+                    if ($c =~ /^[0-9A-Z ')\/:<=>?@|\b,.]$/) {
 			push @fifo, $c;
 		    } elsif ($c eq '&') {
 			push @fifo, sprintf ("%c%s%s", 0x1B, "A", "S");
@@ -465,15 +474,18 @@ sub Do_operations {
             if ($debug) {print "Pot: ", $stat & 0x7f, "\n";}
         } else {
             if ($debug) {print $saw, "\n";}
-            if ( defined $opt_e && $saw >= ' ' && $saw <= '~' ) {
+            if ( defined $opt_e && $saw ge ' ' && $saw le '~' ) {
               # Printable echo chars only..
-              # ..on UDP socket:
-              if ( defined $peerName ) {
+              # ..on all client sockets:
+              if ( scalar(%peerNames) ) {
                 eval {
                   local $SIG{ALRM} = sub { die "alarm time out" };
-                  alarm 1;
-                  send($server, $saw, 0, $peerName);
-                  alarm 0;
+		  foreach my $pName ( keys(%peerNames) ) {
+		    # Echo to all known clients, past and present:
+		    alarm 1;
+		    my $r = send($server, $saw, 0, $pName);
+		    alarm 0;
+		  }
                   1;  # return value from eval on normalcy
                 };
               }

@@ -1,5 +1,5 @@
 .\"                                      Hey, EMACS: -*- nroff -*-
-.TH WINKEYDAEMON "1" "2018-01-31" "Winkeydaemon" "K1EL keyer driver"
+.TH WINKEYDAEMON "1" "2018-02-05" "Winkeydaemon" "K1EL keyer driver"
 .
 .SH NAME
 winkeydaemon \- Morse Code daemon for the Winkey hardware keyer module
@@ -31,11 +31,11 @@ socket and outputs commands to the K1EL keyer on a serial port.
 accepts the following options:
 .TP
 .B \-e
-Turns on winkeyer's 'echo' feature and makes the daemon echo transmitted CW as
-UDP datagrams on the client socket (see '-p').
+Turns on winkeyer's 'echo' feature and makes the daemon echo transmitted CW
+to all active clients (see '-p').
 .IP
-Use the 'netcat' utility to transmit CW (use capitals) while displaying
-echoes, e.g. 'nc -u 127.0.0.1 6790'.
+Test this feature with the 'netcat' utility: 'echo | nc -u 127.0.0.1 6789'.
+This creates an active, echo-only client session.
 .TP
 .BI \-d\  device
 Serial device to be used (default is
