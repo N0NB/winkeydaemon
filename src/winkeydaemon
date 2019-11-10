@@ -388,6 +388,7 @@ sub Do_operations {
 		    my $stopkeying = sprintf("%c", 0x0A);
 		    $count = $port->write($stopkeying);
                     @fifo = ();
+		    $tune_on = 0;
 		}
 
 	    } else {
