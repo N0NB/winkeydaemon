@@ -11,7 +11,7 @@
 # -e  Transmitted CW is echoed back on the client's UDP port (see: '-p')
 # -m  Turns off ('mutes') sidetone in host mode on version 2 and 3 keyers
 #     On USB Lite Wk2 keyers with no speaker, this may disable the LED.
-# -n  Run in debug mode
+# -n  Run in debug mode, stay in foreground
 # -p  UDP port (default is 6789)
 # -q  QRV string, transmitted on start-up
 # -s  Speed (default is 24 wpm, 0 is speed potentiometer)
@@ -65,6 +65,36 @@ use strict;
 my $version = "1.0.8   05 Feb 2018";
 $main::VERSION = $version;
 $Getopt::Std::STANDARD_HELP_VERSION = '1';
+
+sub HELP_MESSAGE {
+    print <<EOT
+
+  NAME
+  winkeydaemon - morse daemon for the winkey hardware keyer module
+
+  SYNOPSIS
+  winkeydaemon [options] ...
+
+  OPTIONS
+  -d  Serial device (default is /dev/ttyUSB0)
+  -b  Serial baud rate (default is 1200)
+  -e  Transmitted CW is echoed back on the client's UDP port (see: '-p')
+  -m  Turns off ('mutes') sidetone in host mode on version 2 and 3 keyers
+      On USB Lite Wk2 keyers with no speaker, this may disable the LED.
+  -n  Run in debug mode, stay in foreground
+  -p  UDP port (default is 6789)
+  -q  QRV string, transmitted on start-up
+  -s  Speed (default is 24 wpm, 0 is speed potentiometer)
+  -V  Prints version, then exists.
+
+EOT
+}
+
+sub usage {
+    HELP_MESSAGE();
+    exit 1;
+}
+
 ##
 ##    This is PA0R version 1.0 with modifications (below) by PE7T
 ##
@@ -128,7 +158,7 @@ use Getopt::Std;
 use Data::Dumper; $Data::Dumper::Useqq = 1;
 
 my $debug              = 0;
-my $speed              = 32;
+my $speed              = 24;
 my $minSpeed           = 20;
 my $maxSpeed           = 40;
 my $serial             = "/dev/ttyUSB0";
@@ -139,7 +169,7 @@ my $qrvMsge            = '';
 our ($opt_V, $opt_n, $opt_p, $opt_s, $opt_d, $opt_q, $opt_b);
 our ($opt_e, $opt_m);
 
-getopts("emVnp:s:d:s:q:");
+getopts("emVnp:s:d:b:s:q:") or usage();
 
 if ($opt_V) {
     $opt_V = undef;
@@ -199,7 +229,7 @@ my $port=Device::SerialPort->new($serial)
 
 
 $port->write_settings or die;
-$port->baudrate(1200) || die "$0: could not set baud rate.\n";
+$port->baudrate($baud)|| die "$0: could not set baud rate.\n";
 $port->parity("none") || die "$0: could not set parity.\n";
 $port->databits(8)    || die "$0: could not set data bits.\n";
 $port->stopbits(2)    || die "$0: could not set stop bits.\n";
