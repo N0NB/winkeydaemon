@@ -179,6 +179,11 @@ our ($opt_e, $opt_m, $opt_h);
 
 getopts("emVnhp:s:d:b:s:q:") or usage();
 
+if ($#ARGV != -1) {
+    print "Extra arguments: @ARGV\n";
+    usage();
+}
+
 if ($opt_V) {
     $opt_V = undef;
     print "\n$0 version $version\n\n";
@@ -218,11 +223,6 @@ my $pinCfg = 0x0F;
 if ($opt_m) {
   # Side tone to be muted:
   $pinCfg = 0x0D;
-}
-
-if ($#ARGV != -1) {
-    print "Extra arguments: @ARGV\n";
-    usage();
 }
 
 if (-d "/tmp/.winkey") {
