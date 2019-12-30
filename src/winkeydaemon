@@ -1,46 +1,4 @@
 #! /usr/bin/perl -w
-# NAME
-# winkeydaemon - morse daemon for the winkey hardware keyer module
-#
-# SYNOPSIS
-# winkeydaemon [options] ...
-#
-# OPTIONS
-# -d  Serial device (default is /dev/ttyUSB0)
-# -b  Serial baud rate (default is 1200)
-# -e  Transmitted CW is echoed back on the client's UDP port (see: '-p')
-# -m  Turns off ('mutes') sidetone in host mode on version 2 and 3 keyers
-#     On USB Lite Wk2 keyers with no speaker, this may disable the LED.
-# -n  Run in debug mode, stay in foreground
-# -p  UDP port (default is 6789)
-# -q  QRV string, transmitted on start-up
-# -s  Speed (default is 24 wpm, 0 is speed potentiometer)
-# -V  Prints version, then exists.
-#
-# DESCRIPTION
-#
-# winkeydaemon is a driver for the winkey2/3 keyers and compatible keyers
-# such as the Hamgadgets Master Keyer 1. It provides an interface which is
-# compatible to the cwdaemon, which means it can be used instead of the
-# cwdaemon.
-#
-# The winkeydaemon listens to a udp socket # and outputs commands to the k1el
-# keyer on a serial port.
-#
-
-# The winkeydaemon implements the following cwdaemon-compatible commands:
-# <ESC>"0"                 Reset to default values
-# <ESC>"2"<"speed value">  Set keying speed (5 ... 60 wpm)
-# <ESC>"4"                 Abort message
-# <ESC>"5"                 Stop (Exit) the daemon
-# <ESC>"7"<"weight value"> Set weighting (-50 ... 50)
-# <ESC>"c"<"x">            Tune x seconds long (limit = 10 seconds)
-# <ESC>"d"<"delay">        PTT on delay 0..50 (0 .. 50ms)
-# Any message              Send morse code message  (max 1 packet!)
-# qrz de pa0rct ++test--   In- and decrease speed on the fly in 2 wpm steps
-#
-# COPYING
-#
 # This program is published under the GPL license.
 #   Copyright (C) 2007, 2008 Rein Couperus PA0R (rein at couperus.com)
 #   Copyright (C) 2013, 2017 Wilbert Knol PE7T (knol00 at gmail.com)
@@ -59,35 +17,80 @@
 # *    You should have received a copy of the GNU General Public License
 # *    along with this program; if not, write to the Free Software Foundation,
 # *    Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA.
+=pod
+
+=head1 NAME
+
+winkeydaemon - Morse Code daemon for the Winkey hardware keyer module
+
+=head1 SYNOPSIS
+
+B<winkeydaemon> [B<-enmV>] [B<-d> I<device>] [B<-b> I<baud>] [B<-p> I<port>] [B<-q> I<string>] [B<-s> I<speed>]
+
+=head1 DESCRIPTION
+
+B<winkeydaemon> is a program written in Perl used to control the the K1EL
+Winkey2 keyer and some others that offer the K1EL protocol emulation
+such as the Hamgadgets Master Keyer 1.
+It provides an interface which is compatible to B<cwdaemon>, which means
+it can be used in its place.
+B<winkeydaemon> listens on a UDP socket and outputs commands to the K1EL
+keyer on a serial port.
+
+=head1 OPTIONS
+
+=over 12
+
+=item B<-d> I<device>
+
+Serial device to be used (default is I</dev/ttyUSB0>)
+
+=item B<-b> I<baud>
+
+Serial baud rate (default is I<1200>)
+
+=item B<-p> I<port>
+
+UDP port (default is I<6789>, the standard B<cwdaemon> port)
+
+=item B<-s> I<wpm>
+
+Speed (default is I<24> WPM, 0 is speed potentiometer)
+
+=item B<-q> string
+
+QRV string, transmitted on start-up
+
+=item B<-e>
+
+Transmitted CW is echoed back on the client's UDP port (see: B<-p>)
+
+=item B<-m>
+
+Turns off (I<mutes>) sidetone in host mode on version 2 and 3 keyers.
+On USB Lite Wk2 keyers with no speaker, this may disable the LED.
+
+=item B<-n>
+
+Run in debug mode, stay in foreground
+
+=item B<-V>
+
+Prints version, then exists.
+
+=back
+
+=cut
 
 use strict;
+use Pod::Usage qw(pod2usage);
 
-my $version = "1.0.8   05 Feb 2018";
+my $version = "1.0.9   30 Dec 2019";
 $main::VERSION = $version;
 $Getopt::Std::STANDARD_HELP_VERSION = '1';
 
 sub HELP_MESSAGE {
-    print <<EOT
-
-  NAME
-  winkeydaemon - morse daemon for the winkey hardware keyer module
-
-  SYNOPSIS
-  winkeydaemon [options] ...
-
-  OPTIONS
-  -d  Serial device (default is /dev/ttyUSB0)
-  -b  Serial baud rate (default is 1200)
-  -e  Transmitted CW is echoed back on the client's UDP port (see: '-p')
-  -m  Turns off ('mutes') sidetone in host mode on version 2 and 3 keyers
-      On USB Lite Wk2 keyers with no speaker, this may disable the LED.
-  -n  Run in debug mode, stay in foreground
-  -p  UDP port (default is 6789)
-  -q  QRV string, transmitted on start-up
-  -s  Speed (default is 24 wpm, 0 is speed potentiometer)
-  -V  Prints version, then exists.
-
-EOT
+    pod2usage(-verbose => 0);
 }
 
 sub usage {
@@ -167,14 +170,19 @@ my $server_port        = 6789;
 my $qrvMsge            = '';
 
 our ($opt_V, $opt_n, $opt_p, $opt_s, $opt_d, $opt_q, $opt_b);
-our ($opt_e, $opt_m);
+our ($opt_e, $opt_m, $opt_h);
 
-getopts("emVnp:s:d:b:s:q:") or usage();
+getopts("emVnhp:s:d:b:s:q:") or usage();
 
 if ($opt_V) {
     $opt_V = undef;
     print "\n$0 version $version\n\n";
     exit(0);
+}
+
+if ($opt_h) {
+    pod2usage(-verbose => 1);
+    exit 1;
 }
 
 if ($opt_n) {
@@ -205,6 +213,11 @@ my $pinCfg = 0x0F;
 if ($opt_m) {
   # Side tone to be muted:
   $pinCfg = 0x0D;
+}
+
+if ($#ARGV != -1) {
+    print "Extra arguments: @ARGV\n";
+    usage();
 }
 
 if (-d "/tmp/.winkey") {
@@ -529,3 +542,102 @@ sub Do_operations {
     undef $port;
     exit;
   }
+
+__END__
+
+=head1 CONFORMING TO cwdaemon
+
+A command consists of either a string of ASCII text to be sent as Morse
+Code by the keyer, or a string consisting of a leading ESCape character
+(decimal 27) followed immediately by a numeral or a single ASCII command
+character and an additional numeric value, depending on the command.
+
+B<winkeydaemon> accepts the following cwdaemon commands:
+
+=over 16
+
+=item <ESC>0
+
+Reset to default values
+
+=item <ESC>2I<speed>
+
+Set keying speed (5 ... 60 WPM)
+
+=item <ESC>4
+
+Abort message
+
+=item <ESC>5
+
+Stop (exit) the daemon
+
+=item <ESC>7I<weight>
+
+Set weighting (-50 ... 50)
+
+=item <ESC>cI<x>
+
+Tune I<x> seconds long (limit = 10 seconds)
+
+=item <ESC>dI<delay>
+
+PTT on delay (0 ... 50ms)
+
+=item I<Any message>
+
+Send Morse Code message
+
+=item I<qrz de pa0rct +test->
+
+Increase and decrease speed on the fly in 2 WPM steps (each B<+>
+and B<-> character in the string increases and decreases the
+Morse speed by 2 WPM, for example, I<+++test---> will cause the
+word I<test> to be sent 6 WPM faster than the preceeding text (if
+any) and the succeeding text (if any) will be sent at the set
+speed).
+
+=back
+
+=head1 NOTES
+
+The Perl module B<Device::SerialPort> is required. For Debian and derivatives
+this can be found as the B<libdevice-serialport-perl> package.
+For Slackware and derivatives this can be found on Slackbuilds dot org
+(B<http://slackbuilds.org>) as the perl-Device-SerialPort build script.
+Other distributions will vary. It is always available from meta::cpan
+(B<https://metacpan.org/release/Device-SerialPort>).
+
+While an B<init>(8) script is included, running B<winkeydaemon> as a system
+daemon is not required. A normal user account can run B<winkeydaemon> as
+long as the account is a member of the group of the serial device
+(often I<dialout> but can vary).
+
+=head1 BUGS
+
+A lack of testing on a wider range of keyers.
+
+Bug reports and patches can be reported through the
+L<https://github.com/N0NB/winkeydaemon> GitHub Web site.
+
+=head1 EXAMPLE
+
+Start B<winkeydaemon> using a custom serial device name:
+
+winkeydaemon -d /dev/mk1
+
+=head1 AUTHORS
+
+B<winkeydaemon> was originally written by Rein Couperus, PA0R.
+
+Joop Stakenborg, PG4I, developed a package for the Debian GNU/Linux
+distribution adding a manual page and an init script.
+
+Wilbert Knol, PE7T, extended it to work with the Winkeyer USB models.
+
+Nate Bargmann, N0NB, collated the various works and is hosting the project
+at GitHub (L<https://github.com/N0NB/winkeydaemon>).
+
+This manual page was originally written by Joop Stakenborg, PG4I,
+for the Debian project (but may be used by others).
+It has been expanded by Nate Bargmann, N0NB.
