@@ -17,6 +17,11 @@
 # *    You should have received a copy of the GNU General Public License
 # *    along with this program; if not, write to the Free Software Foundation,
 # *    Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA.
+
+#
+# to update man page:
+# pod2man --center="K1EL keyer driver" --release="Winkeydaemon" src/winkeydaemon > man/winkeydaemon.1
+#
 =pod
 
 =head1 NAME
@@ -552,7 +557,7 @@ Code by the keyer, or a string consisting of a leading ESCape character
 (decimal 27) followed immediately by a numeral or a single ASCII command
 character and an additional numeric value, depending on the command.
 
-B<winkeydaemon> accepts the following cwdaemon commands:
+B<winkeydaemon> accepts the following B<cwdaemon> commands:
 
 =over 16
 
