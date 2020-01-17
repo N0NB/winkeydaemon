@@ -427,6 +427,7 @@ sub Do_operations {
 		}
 
 	    } else {
+                my $gap = 0;
 		foreach my $c (@chars) {
                     $c = uc($c);
 		    my $cr = ord($c);
@@ -454,8 +455,13 @@ sub Do_operations {
 		    } elsif ($cr == 0) {
 			last;
 		    }
-		    if ($debug > 1) {print $cr, "\n";}
 
+		    if ($c eq '~') {
+                        $gap = 1;
+                    } elsif ($gap) {
+                        push @fifo, ("|") x 4;
+                        $gap = 0;
+                    }
 		}
 
 		if ($debug) {print "Fifo: ",@fifo,"\n";}
