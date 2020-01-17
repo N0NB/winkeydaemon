@@ -369,59 +369,46 @@ sub Do_operations {
 
 	    my @chars = split '', $datagram;
 	    if (ord($chars[0]) == 27) {
+                shift @chars;
+                my $cmd = shift @chars // '';
+                my $arg;
+                { no warnings; $arg = int(join '', @chars); }
 
-		if ($chars[1] eq "2") {		## set speed
-		    $speed = $chars[2];
-		    $speed = $speed .  $chars[3] if defined $chars[3];
+		if ($cmd eq "2") {          ## set speed
+		    $speed = $arg;
 		    if ($speed != 0) {
 			warn "Warning: can't set $speed WPM outside pot range: $minSpeed...$maxSpeed\n"
 			    unless (($minSpeed <= $speed) && ($speed <= $maxSpeed));
 		    }
+
+		    if ($debug) {print "setspeed=$speed\n";}
 		    $setspeed = sprintf ("%c%c", 0x02, $speed);
 		    $count = $port->write($setspeed);
-		    if ($debug) {print "setspeed=$speed\n";}
-		} elsif ($chars[1] eq "5") {  ## exit daemon
+
+		} elsif ($cmd eq "5") {     ## exit daemon
+		    if ($debug) {print "Exiting\n";}
 		    last;
-		} elsif ($chars[1] eq "7") {  ## set weight
-                    my $wgt;
-		    if ($chars[2] eq "-") {
-			$wgt = $chars[2] . $chars[3] ;
-			if ( defined $chars[4] ) {
-			    $wgt = $chars[2] . $chars[3] . $chars[4]
-				unless ord($chars[4]) == 0;
-			}
-		    } else {
-			    $wgt = $chars[2];
-			    if ( defined $chars[3] ) {
-				$wgt = $chars[2] . $chars[3]
-				    unless ord($chars[3]) == 0;
-			    }
-		    }
-		    $wgt += 50;
+
+		} elsif ($cmd eq "7") {     ## set weight
+                    my $wgt = 50 + $arg;
 		    if ($wgt < 10) { $wgt = 10;}
 		    if ($wgt > 90) { $wgt = 90;}
 
 		    if ($debug) {print "weight=$wgt\n";}
 		    my $setweight = sprintf ("%c%c", 0x03, $wgt);
 		    $count = $port->write($setweight);
-		} elsif ($chars[1] eq "d") {  ## set PTT lead in (00...50)
-                    my ($delay, $delaybyte);
-		    if (ord($chars[3]) == 0) {
-			$delay = 0;
-			$delaybyte = 0x02;
-		    } else {
-			$delay = $chars[2] . $chars[3];
-			$delaybyte = int ($delay / 10);
-				}
+
+		} elsif ($cmd eq "d") {  ## set PTT lead in (00...50)
+                    my $delay = $arg;
+                    if ($delay < 0) { $delay = 0;}
+                    if ($delay > 50) { $delay = 50;}
 
 		    if ($debug) { print "PTT lead in = $delay\n";}
-
-		    if ($delaybyte > 5) { $delaybyte = 5; }
-
+                    my $delaybyte = int($delay / 10);
 		    $senddelay = sprintf ("%c%c%c", 0x04, $delaybyte, 0x00);
 		    $count = $port->write($senddelay);
 
-		} elsif ($chars[1] eq "c") {  ## TUNE
+		} elsif ($cmd eq "c") {     ## TUNE
 		    if ($tune_on) {
 			$tune_on = 0;
 			if ($debug) { print "Tune off\n";}
