@@ -428,6 +428,7 @@ sub Do_operations {
 
 	    } else {
 		foreach my $c (@chars) {
+                    $c = uc($c);
 		    my $cr = ord($c);
                     # easy chars: 0-9 A-Z space ' ) / : < = > ? @ | backspace , .
                     if ($c =~ /^[0-9A-Z ')\/:<=>?@|\b,.]$/) {
