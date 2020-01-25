@@ -255,8 +255,6 @@ $port->stopbits(2)    || die "$0: could not set stop bits.\n";
 $port->dtr_active(1)  || die "$0: could not set DTR.\n";
 $port->rts_active(0)  || die "$0: could not set RTS.\n";
 
-my $timeout = 0;
-
 $port->read_char_time(0);
 $port->read_const_time(1);
 
@@ -268,10 +266,9 @@ my $server = IO::Socket::INET->new(LocalPort => $server_port, Proto => "udp")
 
 ########### Initialize keyer
 
-my $openKeyer = sprintf("%c%c", 0x00, 0x02);	## open keyer interface
-my $count = $port->write($openKeyer);
+my $count = port_write(0x00, 0x02);     ## open keyer interface
 
-select undef,undef,undef, 0.3;
+delay_ms(300);
 
 ## set mode: normal word space, no autospace, serial echo,
 ##           iambic-B,  paddle echo as requested by '-e' , paddle watchdog.
@@ -280,33 +277,27 @@ if (defined $opt_e) {
   $winKeyerMode = 0xC4; # Paddle echo
 }
 
-my $setmode = sprintf ("%c%c", 0x0E, $winKeyerMode);
-$count = $port->write($setmode);
+$count = port_write(0x0E, $winKeyerMode);
 
-select undef,undef,undef, 0.3;
+delay_ms(300);
 
-$setmode = sprintf ("%c%c", 0x03, 0x32); ## weighting: none = 0x32
-$count = $port->write($setmode);
+$count = port_write(0x03, 0x32);        ## weighting: none = 0x32
 
-select undef,undef,undef, 0.3;
+delay_ms(300);
 
-my $setpins = sprintf ("%c%c", 0x09, $pinCfg); ## set pinout: LED=side-tone
-$count = $port->write($setpins);
+$count = port_write(0x09, $pinCfg);     ## set pinout: LED=side-tone
 
-select undef,undef,undef, 0.2;
+delay_ms(200);
 
-my $senddelay = sprintf ("%c%c%c", 0x04, 0x01, 0x00); ## set PTT lead. tail [ms]
-$count = $port->write($senddelay);
+$count = port_write(0x04, 0x01, 0x00);  ## set PTT lead. tail [ms]
 
-select undef,undef,undef, 0.2;
+delay_ms(200);
 
 ## set min  WPM and speed range:
 my $r = $maxSpeed - $minSpeed;
-my $setRange = sprintf ("%c%c%c%c", 0x05, $minSpeed, $r, 0);
-$count = $port->write($setRange);
+$count = port_write(0x05, $minSpeed, $r, 0);    ## set range
 
-my $setspeed = sprintf ("%c%c", 0x02, $speed);  ## set the default speed
-$count = $port->write($setspeed);
+$count = port_write(0x02, $speed);      ## set the default speed
 
 if ($debug) {
 	Do_operations();	## do not fork, debug
@@ -325,6 +316,20 @@ if ($debug) {
 
 exit;
 
+#
+# delay N milliseconds
+#
+sub delay_ms {
+    my $ms = shift;
+    select undef,undef,undef, $ms / 1000;
+}
+
+#
+# write an array of bytes to the serial port
+#
+sub port_write {
+    return $port->write(pack 'C*', @_);
+}
 
 ########## Start operations ########
 sub Do_operations {
@@ -382,8 +387,7 @@ sub Do_operations {
 		    }
 
 		    if ($debug) {print "setspeed=$speed\n";}
-		    $setspeed = sprintf ("%c%c", 0x02, $speed);
-		    $count = $port->write($setspeed);
+		    $count = port_write(0x02, $speed);
 
 		} elsif ($cmd eq "5") {     ## exit daemon
 		    if ($debug) {print "Exiting\n";}
@@ -395,8 +399,7 @@ sub Do_operations {
 		    if ($wgt > 90) { $wgt = 90;}
 
 		    if ($debug) {print "weight=$wgt\n";}
-		    my $setweight = sprintf ("%c%c", 0x03, $wgt);
-		    $count = $port->write($setweight);
+		    $count = port_write(0x03, $wgt);
 
 		} elsif ($cmd eq "d") {  ## set PTT lead in (00...50)
                     my $delay = $arg;
@@ -405,8 +408,7 @@ sub Do_operations {
 
 		    if ($debug) { print "PTT lead in = $delay\n";}
                     my $delaybyte = int($delay / 10);
-		    $senddelay = sprintf ("%c%c%c", 0x04, $delaybyte, 0x00);
-		    $count = $port->write($senddelay);
+		    $count = port_write(0x04, $delaybyte, 0x00);
 
 		} elsif ($cmd eq "c") {     ## TUNE
 		    if ($tune_on) {
@@ -416,12 +418,10 @@ sub Do_operations {
 			$tune_on = 1;
 			if ($debug) { print "Tune on\n";}
 		    }
-		    my $tuning = sprintf("%c%c", 0x0B, $tune_on);
-		    $count = $port->write($tuning);
+		    $count = port_write(0x0B, $tune_on);
 
 		} else {
-		    my $stopkeying = sprintf("%c", 0x0A);
-		    $count = $port->write($stopkeying);
+		    $count = port_write(0x0A);      ## stop keying
                     @fifo = ();
 		    $tune_on = 0;
 		}
@@ -536,8 +536,7 @@ sub Do_operations {
         }
     }
 
-    my $keyerclose = sprintf ("%c%c", 0x00, 3);
-    $count = $port->write($keyerclose);
+    $count = port_write(0x00, 3);       ## close keyer
     undef $port;
     exit;
   }
