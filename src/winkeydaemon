@@ -339,6 +339,7 @@ sub Do_operations {
     my $xoff = 0;
     my @fifo = ();
     my $tune_on = 0;
+    my $tune_end;
     my $datagram;
     my $saw;
 
@@ -411,14 +412,15 @@ sub Do_operations {
 		    $count = port_write(0x04, $delaybyte, 0x00);
 
 		} elsif ($cmd eq "c") {     ## TUNE
-		    if ($tune_on) {
-			$tune_on = 0;
-			if ($debug) { print "Tune off\n";}
-		    } else {
-			$tune_on = 1;
-			if ($debug) { print "Tune on\n";}
-		    }
-		    $count = port_write(0x0B, $tune_on);
+                    if ($arg > 0) {
+                        if ($arg > 10) { $arg = 10; }
+
+                        $tune_on = 1;
+                        $tune_end = time() + $arg;
+
+                        if ($debug) { print "Tune on\n";}
+                        $count = port_write(0x0B, 1);
+                    }
 
 		} else {
 		    $count = port_write(0x0A);      ## stop keying
@@ -468,6 +470,12 @@ sub Do_operations {
 
 	    }
 	}
+
+        if ($tune_on && time() > $tune_end) {   # stop tuning
+            $tune_on = 0;
+            if ($debug) { print "Tune off\n";}
+            $count = port_write(0x0B, 0);
+        }
 
         #
         # send chars if buffer is not full
