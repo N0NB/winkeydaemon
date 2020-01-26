@@ -90,7 +90,7 @@ Prints version, then exists.
 use strict;
 use Pod::Usage qw(pod2usage);
 
-my $version = "1.0.9   30 Dec 2019";
+my $version = "1.0.10   26 Jan 2020";
 $main::VERSION = $version;
 $Getopt::Std::STANDARD_HELP_VERSION = '1';
 
